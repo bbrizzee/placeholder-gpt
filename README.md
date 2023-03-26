@@ -16,3 +16,10 @@ To set environment variables for your heroku environment, either use the web int
 heroku config:set DISCORD_TOKEN=YOUR_KEY_HERE
 heroku config:set OPENAI_API_KEY=YOUR_KEY_HERE
 ```
+
+Modify json values in the bot_settings.txt file to match your needs. Here are some definitions from the OpenAI API reference guide:
+
+* **temperature** _[number|optional|defaults to 1]_ What sampling temperature to use, between 0 and 2. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic. We generally recommend altering this or top_p but not both.
+* **top_p** _[number|optional|defaults to 1]_ An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. So 0.1 means only the tokens comprising the top 10% probability mass are considered. We generally recommend altering this or temperature but not both.
+* **presence_penalty** _[number|optional|defaults to 0]_ Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.
+* **frequency_penalty** _[number|optional|defaults to 0]_ Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far, decreasing the model's likelihood to repeat the same line verbatim.

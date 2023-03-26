@@ -4,6 +4,7 @@ import openai
 import aiohttp
 import asyncio
 import logging
+import json
 from collections import deque
 from datetime import datetime
 import tiktoken
@@ -28,6 +29,10 @@ def count_tokens(text, model="gpt-3.5-turbo"):
     except KeyError:
         encoding = tiktoken.get_encoding("cl100k_base")
     return len(encoding.encode(text))
+
+# Load bot settings from bot_settings.txt
+with open("bot_settings.txt", "r") as file:
+    bot_settings = json.load(file)
 
 class ChatBot(discord.Client):
     def __init__(self, *args, **kwargs):
@@ -68,16 +73,15 @@ class ChatBot(discord.Client):
 
         logger.debug(f"$$$$$ Current token count: {token_count}")
 
-        # Read the content of the system_message.txt file
-        with open("system_message.txt", "r") as file:
-            system_message_content = file.read()
+        system_message_content = bot_settings["system_message"]
 
         messages_to_send = [
             {"role": "system", "content": system_message_content},
             *self.conversation_history
         ]
 
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+        # Use bot_settings values in the API call
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=bot_settings["client_timeout"])) as session:
             for _ in range(3):  # Change 3 to the desired number of retries
                 try:
                     logger.debug("Making assistant API call")
@@ -85,15 +89,13 @@ class ChatBot(discord.Client):
                     async with session.post(
                         "https://api.openai.com/v1/chat/completions",
                         headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-                        json={"model": "gpt-4", 
+                        json={"model": bot_settings["model"], 
                               "messages": messages_to_send,
-                              "temperature": "1", # temperature [number|optional|defaults to 1] What sampling temperature to use, between 0 and 2. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic. We generally recommend altering this or top_p but not both.
-                              "top_p": "1", # top_p [number|optional|defaults to 1] An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. So 0.1 means only the tokens comprising the top 10% probability mass are considered. We generally recommend altering this or temperature but not both.
-                              "presence_penalty": "0", # presence_penalty [number|optional|defaults to 0] Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.
-                              "frequency_penalty": "0.5", # frequency_penalty [number|optional|defaults to 0] Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far, decreasing the model's likelihood to repeat the same line verbatim.
+                              "temperature": bot_settings["temperature"],
+                              "top_p": bot_settings["top_p"],
+                              "presence_penalty": bot_settings["presence_penalty"],
+                              "frequency_penalty": bot_settings["frequency_penalty"],
                               },
-                        
-                        timeout=120
                     ) as response:
                         assistant_response_json = await response.json()
                         logger.debug(f"Assistant API response: {assistant_response_json}")
