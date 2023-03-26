@@ -68,8 +68,12 @@ class ChatBot(discord.Client):
 
         logger.debug(f"$$$$$ Current token count: {token_count}")
 
+        # Read the content of the system_message.txt file
+        with open("system_message.txt", "r") as file:
+            system_message_content = file.read()
+
         messages_to_send = [
-            {"role": "system", "content": "You are a brilliant Discord bot named PlaceholderGPT. You engage in back-and-forth conversation the same way humans in a chatroom would communicate. When asked to summarize the recent conversation, you are free to share information about previous messages and their senders. Always pay attention to the context of the conversation - especially the most recent message - and provide relevant responses. Don't instruct users to ask you questions."},
+            {"role": "system", "content": system_message_content},
             *self.conversation_history
         ]
 
