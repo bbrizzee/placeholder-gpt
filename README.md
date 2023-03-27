@@ -4,7 +4,9 @@ placeholder-gpt is a Discord bot written in python that uses the OpenAI API to p
 
 95% of the code for this bot was written by GPT-4, and the first version was entirely written by mimicking the [GPT-4 developer livestream](https://www.youtube.com/watch?v=outcGtbnMuQ).
 
-This version of the bot uses a single python script (discord_bot.py) and runs on Heroku.
+This version of the bot uses two python scripts (discord_bot.py and librarian.py) and runs on Heroku.
+
+librarian.py watches the last several chat messages and attempts to extract user facts from the conversations to use as context for the bot's responses. This is a highly unstable and rudimentary implementation of semi-persistent memory that doesn't require expanding the token limit. 
 
 For this code to work, you must configure a Discord app and bot using the [Discord Developer Portal](https://discord.com/developers/applications/). 
 
@@ -16,6 +18,8 @@ To set environment variables for your heroku environment, either use the web int
 heroku config:set DISCORD_TOKEN=YOUR_KEY_HERE
 heroku config:set OPENAI_API_KEY=YOUR_KEY_HERE
 ```
+
+At present, I have hardcoded the channel name to the bot's singular home in a given Discord server. This should be externalized to the bot_settings.txt in a future release.
 
 Modify json values in the bot_settings.txt file to match your needs. Here are some definitions from the OpenAI API reference guide:
 
