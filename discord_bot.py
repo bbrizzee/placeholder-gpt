@@ -8,6 +8,7 @@ import json
 from collections import deque
 from datetime import datetime
 import tiktoken
+from librarian import Librarian, librarian_main
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -35,32 +36,50 @@ class ChatBot(discord.Client):
         super().__init__(*args, **kwargs)
         self.conversation_history = deque()
         self.message_queue = asyncio.Queue()
+        self.librarian_message_queue = asyncio.Queue()  # Add this line
 
     async def on_ready(self):
         logger.debug(f'{self.user} is connected to Discord!')
         self.loop.create_task(self.process_message_queue())
+        self.librarian = Librarian() 
+        self.loop.create_task(librarian_main(self))  # Replace 'librarian_main' with 'self.librarian'
 
     async def on_message(self, message):
-        if message.author == self.user or message.channel.name != 'placeholder-gpt':
+        if message.author == self.user:
             return
 
-        await self.message_queue.put(message)
+        logger.debug(f"New message: {message.content}")
+        if message.channel.name != 'placeholder-gpt':
+            return
+
+        if message.content == "!facts":
+            facts = self.librarian.get_facts()
+            if facts:
+                await message.channel.send(f"Facts:\n{facts}")
+            else:
+                await message.channel.send("No facts available.")
+        else:
+            # Add the user's message to the conversation_history first
+            self.conversation_history.append({"role": "user", "content": f"{message.author.display_name} ({message.created_at.isoformat()}): {message.content}"})
+            
+            # Then, add the updated conversation_history to the librarian_message_queue
+            await self.librarian_message_queue.put(self.conversation_history.copy())
+            
+            # Finally, add the message to the message_queue for the main bot
+            await self.message_queue.put(message)
+
 
     async def process_message_queue(self):
         while True:
             message = await self.message_queue.get()
-            await self.handle_message(message)
-            await asyncio.sleep(1)
+            if not message.author.bot:
+                self.conversation_history.append({"role": "user", "content": f"{message.author.display_name} ({message.created_at.isoformat()}): {message.content}"})
+                await self.handle_message(message)
 
     async def handle_message(self, message):
-        username = message.author.display_name
-        timestamp = message.created_at.isoformat()
-        user_content = f"{username} ({timestamp}): {message.content}"
-        logger.debug(f"Received message: {user_content}")
+        logger.debug(f"Received message: {message.content}")
 
-        self.conversation_history.append({"role": "user", "content": user_content})
-
-        max_tokens = 2048
+        max_tokens = bot_settings["max_tokens"]
 
         token_count = sum(count_tokens(msg["content"]) for msg in self.conversation_history)
         while token_count > max_tokens:
@@ -71,17 +90,39 @@ class ChatBot(discord.Client):
 
         system_message_content = bot_settings["system_message"]
 
+        # Get the sender's username from the most recent message
+        sender_username = message.author.display_name
+
+        # Retrieve relevant facts about the sender from the Librarian
+        sender_facts = self.librarian.get_facts_for_user(sender_username)
+        logger.debug(f"*****************User facts: {sender_facts}")
+
+        # Check if the most recent assistant message is not already about the sender's facts
+        if (
+            sender_facts
+            and not (
+                self.conversation_history[-1]["role"] == "assistant"
+                and self.conversation_history[-1]["content"].startswith(f"Facts about {sender_username}:")
+            )
+        ):
+            self.conversation_history.append({"role": "assistant", "content": f"Facts about {sender_username}: {sender_facts}"})
+
         messages_to_send = [
             {"role": "system", "content": system_message_content},
             *self.conversation_history
         ]
 
+        async def show_typing_indicator():
+            async with message.channel.typing():
+                await asyncio.sleep(2)
+
         async def api_call():
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=bot_settings["client_timeout"])) as session:
-                for _ in range(3):
+                for attempt in range(3):
+                    logger.debug(f"API call attempt {attempt + 1}")
                     try:
-                        logger.debug("Making assistant API call")
-                        logger.debug(f"Sending these messages: {messages_to_send}")
+                        logger.debug(f"[{datetime.utcnow().isoformat()}] Making assistant API call (attempt {attempt + 1})")
+                        logger.debug(f"[{datetime.utcnow().isoformat()}] Sending these messages: {messages_to_send}")
                         async with session.post(
                             "https://api.openai.com/v1/chat/completions",
                             headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
@@ -109,11 +150,9 @@ class ChatBot(discord.Client):
                             await asyncio.sleep(7)
                 return assistant_response_json
 
-        try:
-            assistant_response_json = await asyncio.wait_for(api_call(), timeout=2)
-        except asyncio.TimeoutError:
-            async with message.channel.typing():
-                assistant_response_json = await api_call()
+        typing_task = asyncio.create_task(show_typing_indicator())
+        assistant_response_json = await asyncio.gather(typing_task, api_call())
+        assistant_response_json = assistant_response_json[1]  # Get the result of the api_call()
 
         if 'choices' in assistant_response_json:
             assistant_response = assistant_response_json['choices'][0]['message']['content']
